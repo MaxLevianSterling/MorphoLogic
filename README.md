@@ -252,4 +252,5 @@ MorphoLogic is released under the GPL-3.0 license.
 
 Thanks to everyone who has helped improve MorphoLogic through code, discussions, bug reports, and feature requests.
 
+Authors: Max L. Sterling, Sheersh Srivastava
 Contributors: https://github.com/MaxLevianSterling/MorphoLogic/graphs/contributors
