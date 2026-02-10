@@ -10,7 +10,7 @@
   <!-- Badges: update links as appropriate -->
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-blue.svg"></a>
   <a href="https://github.com/<ORG>/<REPO>/actions"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/<ORG>/<REPO>/<WORKFLOW_FILE>.yml"></a>
-  <a href="https://zenodo.org/badge/latestdoi/<ZENODO_ID>"><img alt="DOI" src="https://img.shields.io/badge/DOI-zenodo-lightgrey"></a>
+  <a href="https://doi.org/10.5281/zenodo.18553146"><img alt="Example Dataset" src="https://img.shields.io/badge/Example%20dataset-10.5281%2Fzenodo.18553146-blue"></a>
   <a href="https://www.protocols.io/"><img alt="Protocol" src="https://img.shields.io/badge/Protocol-protocols.io-brightgreen"></a>
 </p>
 
@@ -18,8 +18,8 @@
   <a href="#features">Features</a> |
   <a href="#installation">Installation</a> |
   <a href="#usage">Usage</a> |
-  <a href="#outputs">Outputs</a> |
-  <a href="#documentation">Documentation</a> |
+  <a href="#step-by-step-guide">Step-by-step guide</a> |
+  <a href="#example-dataset">Example dataset</a> |
   <a href="#contributing">Contributing</a> |
   <a href="#citation">Citation</a>
 </p>
@@ -223,7 +223,15 @@ python -m morphologic.gui
 
 For a comprehensive guide on how to use MorphoLogic, see:  
 
-**Protocols.io: REPLACE_WITH_LINK**
+- **Protocols.io: REPLACE_WITH_LINK**
+
+## Example dataset
+
+To try MorphoLogic end-to-end, download the example dataset from Zenodo:
+
+- **Example dataset (Zenodo DOI): https://doi.org/10.5281/zenodo.18553146**
+
+Unzip the dataset locally and set **Data directory** to the extracted folder.
 
 ## Contributing
 
