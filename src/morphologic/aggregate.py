@@ -329,15 +329,35 @@ class Aggregator:
         else:
             subj_cols = ["soma_id"]
 
-        # Compute per-element collapsed values either length-weighted or simple mean
+        # Build grouping columns for per-element collapse across bins and subjects
+        gcols = group_cols + subj_cols
+
+        # Select segment-level puncta counts that must sum across segments
+        sum_deps = [d for d in dependents if d == "segment_puncta_count"]
+
+        # Select remaining dependents aggregated by mean or weighted mean
+        mean_deps = [d for d in dependents if d not in sum_deps]
+
+        # Collapse continuous dependents using length-weighted means when configured enabled
         if use_length_weight:
-            elements = Aggregator._group_weighted_means(df, group_cols + subj_cols, dependents, 'segment_length_um')
+            elements = Aggregator._group_weighted_means(df, gcols, mean_deps, "segment_length_um")
+
+        # Collapse continuous dependents using simple means when weighting disabled
         else:
             elements = (
-                df.groupby(group_cols + subj_cols, observed=False)[dependents]
+                df.groupby(gcols, observed=False)[mean_deps]
                 .mean()
                 .reset_index()
             )
+
+        # Add segment puncta totals by summing within each per-element group
+        if sum_deps:
+            sums = (
+                df.groupby(gcols, observed=False)[sum_deps]
+                .sum()
+                .reset_index()
+            )
+            elements = elements.merge(sums, on=gcols, how="left")
 
         # Descriptive helpers
         def q1(x: pd.Series) -> float:

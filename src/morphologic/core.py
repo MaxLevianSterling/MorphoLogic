@@ -125,7 +125,7 @@ class Processor:
         start_time = time.time()
         processed = 0
 
-        with tqdm(total=n_cells, desc="Processing Cells", unit="cell") as pbar:
+        with tqdm(total=n_cells, desc="Processing Cells", unit="cell", smoothing=0) as pbar:
             # Pre-group leaf cells so image assets are prepared once per (folder, image_stem)
             image_groups = self._collect_cells_by_image(data_structure)
 

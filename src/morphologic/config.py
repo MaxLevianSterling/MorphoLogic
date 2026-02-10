@@ -13,20 +13,20 @@ from .exceptions import ConfigError, DataNotFound
 
 @dataclass(frozen=True)
 class Pathing:
-    directory: Path = Path("/scratch2/msterling/NaV_staining")                   # Parent directory containing all data
-    image_suffix: str = "_8bit"                                           # Image file suffix
+    directory: Path = Path("path/to/MorphoLogic/examples/example_dataset")       # Parent directory containing all data
+    image_suffix: str = "_8bit"                                                  # Image file suffix
     soma_roi_suffix: str = "_somas"                                              # File suffix for soma ROIs
-    puncta_roi_suffix: str = "_czi_corrected_colocResults_0"                 # Optional: File suffix for puncta ROIs
+    puncta_roi_suffix: str = "_corrected_colocResults_0"                         # Optional: File suffix for puncta ROIs
     signal_channels: Tuple[int, ...] = (2, 4)                                    # Optional: 1-based channel indices of signal channels in image
     nuclear_roi_suffix: str = "_nuclei"                                          # Optional: File suffix for nuclear ROIs 
 
 
 @dataclass(frozen=True)
 class Processing:
-    overwrite: bool = True                                                       # Recompute even if cell outputs already exist
+    overwrite: bool = False                                                      # Recompute even if cell outputs already exist
     aggregate: bool = True                                                       # Run post-processing aggregation of data
     visualize: bool = True                                                       # Toggle per-cell figure generation
-    extract_puncta: bool = False                                                 # Toggle morphology-aware puncta mapping
+    extract_puncta: bool = True                                                  # Toggle morphology-aware puncta mapping
     extract_signal: bool = True                                                  # Toggle morphology-aware signal mapping
     deduct_nuclei: bool = True                                                   # Subtract nuclear signal from somatic signal
 
@@ -35,8 +35,7 @@ class Processing:
 class Parameters:
     # General
     recursion_limit: int = 5000                                                  # Python recursion limit
-    #voxel_size: float = 0.0720635                                                # µm per pixel (µm)
-    voxel_size: float = 0.227                                                # µm per pixel (µm)
+    voxel_size: float = 0.227                                                    # µm per pixel (µm)
     sholl_range: Tuple[float, float, float] = (0.0, 801.0, 10.0)                 # Sholl radii definition: [start, stop, step] (µm)
     puncta_max_distance_um: float = 3.0                                          # Ignore puncta farther than this from any soma/segment (µm)
 
@@ -60,7 +59,7 @@ class Display:
     medium_font_size: float = 4.5                                                # Medium caption/annotation font size
     small_font_size: Optional[float] = 3                                         # Extra-small (used by some views)
     tick_label_size: int = 6                                                     # Axis tick label font size
-    background_color: Tuple[int, int, int] = (255, 255, 255)                       # Canvas background RGB (0–255)
+    background_color: Tuple[int, int, int] = (255, 255, 255)                     # Canvas background RGB (0–255)
     dpi: int = 300                                                               # Output resolution in dots-per-inch
     image_format: str = "png"                                                    # File format for saved figure
 
@@ -129,7 +128,7 @@ class Signal:
     enable: bool = True                                                          # Enable rendering signal figures
     show_axes_and_title: bool = True                                             # Draw axes and a title
     show_scale_bar: bool = True                                                  # Draw a scale bar on the figure
-    channel_names: Tuple[str, ...] = ("SCN2A", "SCN8A")                          # Signal channel names (match General - Signal Channels)
+    channel_names: Tuple[str, ...] = ("Channel_Name_A", "Channel_Name_B")                    # Signal channel names (match General - Signal Channels)
     display: Display = Display()                                                 # General display settings
     scale_bar: ScaleBar = ScaleBar()                                             # Scale bar styling/placement
     legend: Legend = Legend()                                                    # Legend placement and geometry
@@ -147,8 +146,8 @@ class Visualization:
 @dataclass(frozen=True)
 class Aggregate:
     # General
-    independents: List[int] = field(default_factory=lambda: [1,2,3])             # Subfolder levels treated as independent variables (under pathing.directory)
-    norm_independent: Optional[int] = 1                                       # (Optional: None) Index of independents to create normalized signal data for (e.g. batch)
+    independents: List[int] = field(default_factory=lambda: [1,2])               # Subfolder levels treated as independent variables (under pathing.directory)
+    norm_independent: Optional[int] = None                                       # (Optional: None) Index of independents to create normalized signal data for (e.g. batch)
 
     # Sholl analysis
     sholl: Dict[str, Any] = field(default_factory=lambda: {                      # Sholl dependents
@@ -158,7 +157,7 @@ class Aggregate:
             "branch_points",                                                     # Number of branch points encountered at each radius
             "terminal_points",                                                   # Number of terminal tips (endpoints) at each radius
         ],
-        "per_subject_dependents": [                                                 # Dependent variables computed once per subject
+        "per_subject_dependents": [                                              # Dependent variables computed once per subject
             "auc",                                                               # Area under the curve across all radii
             "crit",                                                              # Critical radius (maximum value point)
             "r",                                                                 # Correlation coefficient for the radial fit
