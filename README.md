@@ -9,8 +9,7 @@
 <p align="center">
   <!-- Badges: update links as appropriate -->
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-blue.svg"></a>
-  <a href="https://github.com/<ORG>/<REPO>/actions"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/<ORG>/<REPO>/<WORKFLOW_FILE>.yml"></a>
-  <a href="https://doi.org/10.5281/zenodo.18553146"><img alt="Example Dataset" src="https://img.shields.io/badge/Example%20dataset-10.5281%2Fzenodo.18553146-blue"></a>
+  <a href="https://doi.org/10.5281/zenodo.18553146"><img alt="Example Dataset" src="https://img.shields.io/badge/Example%20dataset-10.5281%2Fzenodo.18553146-red"></a>
   <a href="https://www.protocols.io/"><img alt="Protocol" src="https://img.shields.io/badge/Protocol-protocols.io-brightgreen"></a>
 </p>
 
@@ -227,9 +226,9 @@ For a comprehensive guide on how to use MorphoLogic, see:
 
 ## Example dataset
 
-To try MorphoLogic end-to-end, download the example dataset from Zenodo:
+To try MorphoLogic end-to-end, download the example dataset:
 
-- **Example dataset (Zenodo DOI): https://doi.org/10.5281/zenodo.18553146**
+- **Zenodo DOI: https://doi.org/10.5281/zenodo.18553146**
 
 Unzip the dataset locally and set **Data directory** to the extracted folder.
 
@@ -260,5 +259,5 @@ MorphoLogic is released under the GPL-3.0 license.
 
 Thanks to everyone who has helped improve MorphoLogic through code, discussions, bug reports, and feature requests.
 
-Authors: Max L. Sterling, Sheersh Srivastava
+Authors: Max L. Sterling, Sheersh Srivastava  
 Contributors: https://github.com/MaxLevianSterling/MorphoLogic/graphs/contributors
