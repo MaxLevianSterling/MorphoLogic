@@ -36,7 +36,7 @@
 <strong>MorphoLogic extracts comprehensive neuronal morphometrics from 2D SWC reconstructions and can perform morphology-aware mapping to project concurrent microscopy signals or (synaptic) puncta onto reconstructed neurons.</strong>
 Beyond standard geometric and Sholl-style outputs, MorphoLogic provides a framework for mapping image-derived measurements onto the reconstructed tree and associating them with low-level architecture, supporting morphology-conditioned summaries such as signal or puncta density versus distance from soma, neurite radius, branch order, or electrotonic distance.
 
-<strong>Expected results include per-cell diagnostic visualizations and per-dataset aggregated CSV tables spanning segment-, neurite-, and cell-level summaries.</strong>
+<strong>Outputs include per-cell diagnostic visualizations and per-dataset aggregated CSV tables spanning segment-, neurite-, and cell-level summaries.</strong>
 The exported tables are structured for downstream group comparisons and stratified statistical profiling, with measurements aggregated across bins of morphological features and both absolute and normalized positional coordinates, and can readily be used to isolate subsets such as the largest neurite in post-hoc analyses.
 
 ---
