@@ -18,6 +18,7 @@
   <a href="#installation">Installation</a> |
   <a href="#usage">Usage</a> |
   <a href="#step-by-step-guide">Step-by-step guide</a> |
+  <a href="#step-by-step-guide">Troubleshooting</a> |
   <a href="#example-dataset">Example dataset</a> |
   <a href="#contributing">Contributing</a> |
   <a href="#citation">Citation</a>
@@ -220,7 +221,7 @@ python -m morphologic.gui
 
 ## Step-by-step guide
 
-For a comprehensive guide on how to use MorphoLogic, see:  
+For a comprehensive guide on how to use MorphoLogic, including extensive troubleshooting, see:  
 
 - **Protocols.io: REPLACE_WITH_LINK**
 
