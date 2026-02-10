@@ -30,7 +30,7 @@
 
 <!-- Optional: add a graphical abstract / pipeline figure -->
 <p align="center">
-  <img src="docs/assets/graphical-abstract.png" alt="MorphoLogic overview (graphical abstract)" width="860" />
+  <img src="docs/assets/Graphical_Abstract.png" alt="MorphoLogic overview (graphical abstract)" width="860" />
 </p>
 
 <strong>MorphoLogic extracts comprehensive neuronal morphometrics from 2D SWC reconstructions and can perform morphology-aware mapping to project concurrent microscopy signals or (synaptic) puncta onto reconstructed neurons.</strong>
