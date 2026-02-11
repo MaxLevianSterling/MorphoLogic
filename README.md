@@ -177,7 +177,7 @@ git --version
 Clone the repository
 ```bash
 git clone https://github.com/MaxLevianSterling/MorphoLogic.git
-cd morphologic
+cd MorphoLogic
 ```
 
 ### 3) Create Virtual Environment
@@ -217,6 +217,12 @@ Launch the GUI (with the virtual environment activated):
 
 ```bash
 python -m morphologic.gui
+```
+
+Or run the code without the GUI after a manual config.py edit
+
+```bash
+python -m morphologic
 ```
 
 ## Step-by-step guide
