@@ -235,7 +235,7 @@ For a comprehensive guide on how to use MorphoLogic, including extensive trouble
 
 To try MorphoLogic end-to-end, download the example dataset:
 
-- **Zenodo DOI: https://doi.org/10.5281/zenodo.18553146**
+- **Zenodo: https://zenodo.org/records/18553146**
 
 Unzip the dataset locally and set **Data directory** to the extracted folder.
 
