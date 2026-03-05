@@ -66,7 +66,7 @@ The exported tables are structured for downstream group comparisons and stratifi
   - **Comprehensive morphometrics and Sholl analysis**
     - Voxel-calibrated geometry (voxel_size in µm/px)
     - Customizable Sholl radius definition (start, stop, step in µm)
-	  - Surface area and volume approximation with oblique frustums
+    - Surface area and volume approximation with oblique frustums
     - Per-segment dependents: Neurite radius
     - Per-branch dependents: (electrotonic) length, surface area, volume
     - Per-neurite dependents: (electrotonic) length, surface area, volume
