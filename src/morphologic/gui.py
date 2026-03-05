@@ -372,6 +372,7 @@ class ConfigGUI(tk.Tk):
         # Gate visualization subtabs on feature toggles
         self._set_viz_subtab_state("puncta", extract_puncta)
         self._set_viz_subtab_state("signal", extract_signal)
+        self._set_viz_subtab_state("mapping", extract_puncta or extract_signal)
 
 
     def _update_progress(self, current: int, total: int, sec_per_cell: float) -> None:
@@ -945,6 +946,7 @@ class ConfigGUI(tk.Tk):
         sholl_tab = ttk.Frame(vis_nb)
         puncta_tab = ttk.Frame(vis_nb)
         sig_tab = ttk.Frame(vis_nb)
+        mapping_tab = ttk.Frame(vis_nb)
 
         # Register each tab with a user-facing label (desired order)
         vis_nb.add(display_tab, text="Display")
@@ -955,11 +957,13 @@ class ConfigGUI(tk.Tk):
         vis_nb.add(sholl_tab, text="Sholl")
         vis_nb.add(puncta_tab, text="Puncta")
         vis_nb.add(sig_tab, text="Signal")
+        vis_nb.add(mapping_tab, text="Mapping")
 
         # Cache tab frames for enable/disable control
         self._viz_tabs = {
             "signal": sig_tab,
             "puncta": puncta_tab,
+            "mapping": mapping_tab,
         }
 
         # Create scrollable content frames so each tab can host a long form layout
@@ -971,6 +975,7 @@ class ConfigGUI(tk.Tk):
         sig_inner = self._make_scrollable_inner(sig_tab)
         puncta_inner = self._make_scrollable_inner(puncta_tab)
         sholl_inner = self._make_scrollable_inner(sholl_tab)
+        mapping_inner = self._make_scrollable_inner(mapping_tab)
 
         # Build the global Display controls using a representative default instance
         disp_default = viz.reconstruction.display
@@ -1031,6 +1036,11 @@ class ConfigGUI(tk.Tk):
         self._build_viz_section(sec_frame, "sholl", viz.sholl)
         sholl_inner.columnconfigure(0, weight=1)
 
+        sec_frame = ttk.LabelFrame(mapping_inner, text="Mapping")
+        sec_frame.grid(row=0, column=0, sticky="nsew", padx=8, pady=4)
+        self._build_viz_section(sec_frame, "mapping", viz.mapping)
+        mapping_inner.columnconfigure(0, weight=1)
+
 
     def _build_viz_section(self, frame: ttk.Frame, sec_name: str, sec: Any) -> None:
         """
@@ -1069,6 +1079,7 @@ class ConfigGUI(tk.Tk):
             "enable",
             "show_axes_and_title",
             "show_scale_bar",
+            "bin_size_um",
             "channel_names",
             "show_cell_metrics",
             "dot_radius_px",
@@ -1081,6 +1092,7 @@ class ConfigGUI(tk.Tk):
             "enable": "Enable",
             "show_axes_and_title": "Show axes and title",
             "show_scale_bar": "Show scale bar",
+            "bin_size_um": "Bin size (µm)",
             "channel_names": "Channel names (comma-separated strings)",
             "show_cell_metrics": "Show cell metrics",
             "dot_radius_px": "Dot radius (px)",
@@ -1757,6 +1769,7 @@ class ConfigGUI(tk.Tk):
         viz_signal = build_section_only("signal", viz_default.signal)
         viz_puncta = build_section_only("puncta", viz_default.puncta)
         viz_sholl = build_section_only("sholl", viz_default.sholl)
+        viz_mapping = build_section_only("mapping", viz_default.mapping)
 
         visualization = VizConfig(
             reconstruction=viz_recon,
@@ -1764,6 +1777,7 @@ class ConfigGUI(tk.Tk):
             signal=viz_signal,
             puncta=viz_puncta,
             sholl=viz_sholl,
+            mapping=viz_mapping,
         )
         
         # Validate visualization channel names when signal rendering is enabled

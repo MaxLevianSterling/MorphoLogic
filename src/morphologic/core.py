@@ -482,6 +482,7 @@ class Processor:
         ext_sig = self.cfg.visualization.signal.display.image_format
         ext_sholl = self.cfg.visualization.sholl.display.image_format
         ext_puncta = self.cfg.visualization.puncta.display.image_format
+        ext_map = self.cfg.visualization.mapping.display.image_format
 
         # Snapshot the configured signal channels so we can require one plot per channel (when enabled)
         chans = list(self.cfg.pathing.signal_channels)
@@ -508,6 +509,10 @@ class Processor:
         # Puncta
         if self.cfg.processing.extract_puncta and self.cfg.visualization.puncta.enable:
             paths.append(save_dir / f"{base_name}_puncta.{ext_puncta}")
+
+        # Mapping
+        if (self.cfg.processing.extract_puncta or self.cfg.processing.extract_signal) and self.cfg.visualization.mapping.enable:
+            paths.append(save_dir / f"{base_name}_mapping.{ext_map}")
 
         return paths
 
@@ -735,6 +740,10 @@ class Plotter:
         # Sholl
         if self.cfg.visualization.sholl.enable:
             self.viz.save_sholl(cell_data, out_dir / basename)
+
+        # Mapping
+        if (self.cfg.processing.extract_puncta or self.cfg.processing.extract_signal) and self.cfg.visualization.mapping.enable:
+            self.viz.save_mapping(cell_data, out_dir / basename)
 
 
 class MorphologyPipeline:

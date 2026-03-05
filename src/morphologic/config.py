@@ -13,7 +13,7 @@ from .exceptions import ConfigError, DataNotFound
 
 @dataclass(frozen=True)
 class Pathing:
-    directory: Path = Path("path/to/MorphoLogic/examples/example_dataset")       # Parent directory containing all data
+    directory: Path = Path("/scratch2/msterling/example_dataset")       # Parent directory containing all data
     image_suffix: str = "_8bit"                                                  # Image file suffix
     soma_roi_suffix: str = "_somas"                                              # File suffix for soma ROIs
     puncta_roi_suffix: str = "_corrected_colocResults_0"                         # Optional: File suffix for puncta ROIs
@@ -23,7 +23,7 @@ class Pathing:
 
 @dataclass(frozen=True)
 class Processing:
-    overwrite: bool = False                                                      # Recompute even if cell outputs already exist
+    overwrite: bool = True                                                      # Recompute even if cell outputs already exist
     aggregate: bool = True                                                       # Run post-processing aggregation of data
     visualize: bool = True                                                       # Toggle per-cell figure generation
     extract_puncta: bool = True                                                  # Toggle morphology-aware puncta mapping
@@ -128,10 +128,18 @@ class Signal:
     enable: bool = True                                                          # Enable rendering signal figures
     show_axes_and_title: bool = True                                             # Draw axes and a title
     show_scale_bar: bool = True                                                  # Draw a scale bar on the figure
-    channel_names: Tuple[str, ...] = ("Channel_Name_A", "Channel_Name_B")                    # Signal channel names (match General - Signal Channels)
+    channel_names: Tuple[str, ...] = ("Channel_Name_A", "Channel_Name_B")        # Signal channel names (match General - Signal Channels)
     display: Display = Display()                                                 # General display settings
     scale_bar: ScaleBar = ScaleBar()                                             # Scale bar styling/placement
     legend: Legend = Legend()                                                    # Legend placement and geometry
+
+
+@dataclass(frozen=True)
+class Mapping:
+    enable: bool = True                                                          # Enable rendering morphology-aware mapping scatterplot(s)
+    show_axes_and_title: bool = True                                             # Draw axes and a title
+    bin_size_um: float = 10.0                                                    # Distance bin width (µm)
+    display: Display = Display()                                                 # General display settings
 
 
 @dataclass(frozen=True)
@@ -141,6 +149,7 @@ class Visualization:
     signal: Signal = Signal()                                                    # Signal/intensity maps
     sholl: Sholl = Sholl()                                                       # Sholl analysis plots
     puncta: Puncta = Puncta()                                                    # Puncta overlay view   
+    mapping: Mapping = Mapping()                                                 # Mapping scatterplots
 
 
 @dataclass(frozen=True)

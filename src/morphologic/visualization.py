@@ -10,6 +10,7 @@ import matplotlib
 matplotlib.use("Agg")  # non-GUI backend for CLI usage
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from matplotlib.gridspec import GridSpec
 from matplotlib.patches import Rectangle
 from matplotlib.ticker import MaxNLocator
@@ -758,6 +759,181 @@ def visualize_sholl(
         plt.close(fig)
 
 
+def visualize_mapping(
+    cell_data: Dict[str, Any],
+    config: Config,
+    save_file_path: str,
+) -> None:
+    """
+    Render and save binned mapping plots for one cell.
+
+    Use:
+        Plots distance-from-soma binned curves for:
+          - puncta count (summed per bin, when enabled), with an explicit (0,0) point
+          - signal density (mean per bin per channel, when enabled), including the soma
+            signal density plotted at x=0
+        and arranges panels in a 2-high grid when multiple plots are present.
+        Puncta (if enabled) occupies the top-left; the first signal channel (if enabled)
+        occupies the bottom-left, then fills columns left-to-right.
+
+        Bin x-positions are placed at the *right edge* of each bin:
+            [0, 10) -> x = 10
+            [10, 20) -> x = 20
+        so plotted points align with the distal end of each distance interval.
+
+    Args:
+        cell_data (dict): Per-cell data dict containing:
+            - "geometric_dataframes": List[pd.DataFrame] with per-node metrics including
+              "dist_from_soma_um" and (optionally) "signal_density_{ch}" and/or
+              "segment_puncta_count". Also includes "soma_signal_density_{ch}" repeated
+              per row when signals are enabled.
+        config (Config): Global config object containing visualization settings.
+        save_file_path (str): Output path prefix without the "_mapping" suffix.
+
+    Returns:
+        None
+
+    Raises:
+        VisualizationError: If the Mapping figure cannot be saved.
+    """
+    # Resolve the mapping visualization config and display settings
+    vis_config = config.visualization.mapping
+    disp = vis_config.display
+
+    # Concatenate neurite dataframes into one table for binning and plotting
+    df_all = pd.concat(cell_data["geometric_dataframes"], ignore_index=True)
+
+    # Resolve the distance axis in microns
+    x_dist = df_all["dist_from_soma_um"].astype(float)
+
+    # Resolve the bin width (µm) and construct bin edges/right-edges for plotting
+    bin_um = float(vis_config.bin_size_um)
+    max_dist = float(x_dist.max())
+    n_bins = int(np.floor(max_dist / bin_um)) + 1
+    edges = np.arange(0.0, (n_bins + 1) * bin_um, bin_um)
+    x_right = edges[1:]  # right edge of each bin; [0,bin)->bin, ...
+
+    # Assign each row to a distance bin (integer bin index)
+    df_all["_bin_idx"] = np.floor(x_dist / bin_um).astype(int)
+
+    # Decide which panels to render (puncta first, then signal channels)
+    panels: list[tuple[str, str]] = []
+
+    # Add puncta panel when puncta extraction is enabled
+    if config.processing.extract_puncta:
+        panels.append(("puncta", "segment_puncta_count"))
+
+    # Add one signal panel per configured channel when signal extraction is enabled
+    if config.processing.extract_signal:
+        for ch in list(config.pathing.signal_channels):
+            panels.append(("signal", str(ch)))
+
+    # Resolve panel count and set up the figure layout (square-ish like Sholl)
+    n_panels = len(panels)
+    if n_panels == 1:
+        fig, ax_arr = plt.subplots(figsize=(6, 6))
+        axes = [ax_arr]
+    else:
+        ncols = int(np.ceil(n_panels / 2))
+        fig = plt.figure(figsize=(4 * ncols, 8))
+        gs = GridSpec(2, ncols, figure=fig, hspace=0.35, wspace=0.35)
+
+        # Fill order: (0,0), (1,0), (0,1), (1,1), ...
+        positions: list[tuple[int, int]] = []
+        for c in range(ncols):
+            positions.append((0, c))
+            positions.append((1, c))
+        positions = positions[:n_panels]
+
+        # Instantiate axes in the requested fill order
+        axes = [fig.add_subplot(gs[r, c]) for (r, c) in positions]
+
+    # Plot each panel as a binned line plot (Sholl-style)
+    for ax, (kind, key) in zip(axes, panels):
+
+        # Compute the binned y-values for puncta (sum) or signal density (mean)
+        if kind == "puncta":
+            # Sum puncta per distance bin and align to the full bin domain
+            y_by_bin = df_all.groupby("_bin_idx")["segment_puncta_count"].sum()
+
+            y_vals = np.zeros(len(x_right), dtype=float)
+            for b, v in y_by_bin.items():
+                if 0 <= int(b) < len(y_vals):
+                    y_vals[int(b)] = float(v)
+
+            # Prepend an explicit (0,0) for puncta
+            x_plot = np.concatenate(([0.0], x_right))
+            y_plot = np.concatenate(([0.0], y_vals))
+
+            # Plot puncta totals as a line plot with markers (Sholl style)
+            ax.plot(x_plot, y_plot, "b-o", markersize=3)
+
+            # Apply titles and y-labels for puncta
+            title = "Puncta vs Distance from Soma"
+            ax.set_ylabel("Puncta count (sum per bin)", fontsize=disp.big_font_size)
+            ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+
+        else:
+            # Compute mean signal density per distance bin and align to the full bin domain
+            ch = int(key)
+            col = f"signal_density_{ch}"
+            y_by_bin = df_all.groupby("_bin_idx")[col].mean()
+
+            y_vals = np.full(len(x_right), np.nan, dtype=float)
+            for b, v in y_by_bin.items():
+                if 0 <= int(b) < len(y_vals):
+                    y_vals[int(b)] = float(v)
+
+            # Pull soma signal density from the repeated per-row field populated in extend_dataframe
+            soma_col = f"soma_signal_density_{ch}"
+            soma_y = float(df_all[soma_col].iloc[0])
+
+            # Prepend soma point at x=0
+            x_plot = np.concatenate(([0.0], x_right))
+            y_plot = np.concatenate(([soma_y], y_vals))
+
+            # Plot mean signal density as a line plot with markers (Sholl style)
+            ax.plot(x_plot, y_plot, "b-o", markersize=3)
+
+            # Apply titles and y-labels for signal density (with channel naming when available)
+            try:
+                ch_name = config.visualization.signal.channel_names[config.pathing.signal_channels.index(ch)]
+                title = f"Signal Density vs Distance from Soma (Channel {ch}: {ch_name})"
+            except Exception:
+                title = f"Signal Density vs Distance from Soma (Channel {ch})"
+
+            ax.set_ylabel("Signal density (mean per bin)", fontsize=disp.big_font_size)
+
+        # Apply axis labels/title formatting according to the mapping config
+        if vis_config.show_axes_and_title:
+            ax.set_title(title, fontsize=disp.big_font_size, fontweight="bold")
+            ax.set_xlabel("Distance from soma (µm)", fontsize=disp.big_font_size)
+            ax.tick_params(axis="both", which="major", labelsize=disp.tick_label_size)
+            ax.set_xlim(0, edges[-1])
+        else:
+            ax.set_title("")
+            ax.set_xlabel("")
+            ax.set_ylabel("")
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_frame_on(False)
+
+    # Save the figure and always close to avoid leaking matplotlib state
+    output_file = f"{save_file_path}_mapping.{disp.image_format}"
+    try:
+        plt.savefig(
+            output_file,
+            format=disp.image_format,
+            dpi=disp.dpi,
+            bbox_inches="tight",
+        )
+    except Exception as e:
+        plt.close(fig)
+        raise VisualizationError(f"Failed to save Mapping figure to {output_file}: {e}") from e
+    else:
+        plt.close(fig)
+
+
 class Visualization:
     """
     Adapter around the visualization helpers.
@@ -885,6 +1061,23 @@ class Visualization:
             None
         """
         visualize_sholl(
+            cell_data=cell_data,
+            config=self.cfg,
+            save_file_path=str(out_base),
+        )
+
+    def save_mapping(self, cell_data: Dict[str, Any], out_base: Path) -> None:
+        """
+        Save mapping scatterplots (puncta and/or signal density vs distance from soma).
+
+        Args:
+            cell_data (dict): Per-cell data dict from the pipeline.
+            out_base (Path): Base output path (without suffix).
+
+        Returns:
+            None
+        """
+        visualize_mapping(
             cell_data=cell_data,
             config=self.cfg,
             save_file_path=str(out_base),
