@@ -256,6 +256,8 @@ If you use MorphoLogic in academic work, please cite:
 
 Sterling ML, Srivastava S, Kogo N, van Wezel R, Nadif Kasri N. MorphoLogic (v1.0) [Software]. Protocols.io; 2026. doi:10.17504/protocols.io.q26g77ppqgwz/v1
 
+https://dx.doi.org/10.17504/protocols.io.q26g77ppqgwz/v1
+
 ## License
 
 MorphoLogic is released under the GPL-3.0 license.
