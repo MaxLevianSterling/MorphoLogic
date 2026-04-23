@@ -162,6 +162,7 @@ def soma_center(df: pd.DataFrame, voxel_size: float) -> Tuple[int, Dict[str, Tup
 def split_by_neurites(
     df: pd.DataFrame,
     root: int,
+    file: str,
     soma_center_um: Optional[Tuple[float, float]] = None,
     max_root_offset_um: Optional[float] = None,
     split_branchpoints_within: int = 1,
@@ -183,6 +184,7 @@ def split_by_neurites(
     Args:
         df (pd.DataFrame): SWC DataFrame with 'ID', 'Parent', and coordinate columns.
         root (int): Explicit soma/root ID passed through to `build_tree`.
+        file (str): Source filename used for validation/error reporting.
         soma_center_um (Optional[Tuple[float, float]]): Soma center
             (x, y) in µm. Required if max_root_offset_um is set (to avoid
             recomputing the soma center).
@@ -240,7 +242,7 @@ def split_by_neurites(
             d = float(np.linalg.norm(np.asarray((p[0], p[1]), dtype=float) - sc))
             if d > float(max_root_offset_um):
                 raise ValidationError(
-                    f"Neurite root ID {soma_child} is {d:.2f} µm from soma "
+                    f"Neurite root ID {soma_child} is {d:.2f} µm from soma in {file} "
                     f"(threshold {max_root_offset_um} µm)."
                 )
 

@@ -292,6 +292,7 @@ class Processor:
         neurite_dfs = dict(enumerate(split_by_neurites(
             df,
             root=cell["soma_node_id"],
+            file=cell["file"],
             soma_center_um=cell["soma_center"]["um"],
             max_root_offset_um=self.cfg.parameters.max_root_offset_um,
             split_branchpoints_within=self.cfg.parameters.enforce_primaries_until,
