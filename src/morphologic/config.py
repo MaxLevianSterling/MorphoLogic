@@ -36,7 +36,7 @@ class Parameters:
     # General
     recursion_limit: int = 5000                                                  # Python recursion limit
     voxel_size: float = 0.227                                                    # µm per pixel (µm)
-    sholl_range: Tuple[float, float, float] = (0.0, 801.0, 10.0)                 # Sholl radii definition: [start, stop, step] (µm)
+    sholl_range: Tuple[float, float, float] = (0.0, 801.0, 25.0)                 # Sholl radii definition: [start, stop, step] (µm)
     puncta_max_distance_um: float = 3.0                                          # Ignore puncta farther than this from any soma/segment (µm)
 
     # Neurite radius smoothing
@@ -138,7 +138,7 @@ class Signal:
 class Mapping:
     enable: bool = True                                                          # Enable rendering morphology-aware mapping scatterplot(s)
     show_axes_and_title: bool = True                                             # Draw axes and a title
-    bin_size_um: float = 10.0                                                    # Distance bin width (µm)
+    bin_size_um: float = 25.0                                                    # Distance bin width (µm)
     display: Display = Display()                                                 # General display settings
 
 
@@ -179,7 +179,7 @@ class Aggregate:
     geometric: Dict[str, Any] = field(default_factory=lambda: {                  # Geometric dependents; augmented in _add_dependents
         "per_segment": {                                                         # Per-segment (node-to-node) aggregation settings
             "binning": {                                                         # Histogram bin definitions for stratified analyses
-                "distance": [0, 800, 10],                                        # [start, stop, step] for (electrotonic) distance from soma (unitless/µm)
+                "distance": [0, 800, 25],                                        # [start, stop, step] for (electrotonic) distance from soma (unitless/µm)
                 "radius": [0, 2, 0.05],                                          # [start, stop, step] for dendritic radius (µm)
                 "percent": [0, 1, 0.01],                                         # [start, stop, step] for fractional/percent metrics (0–1)
             },
