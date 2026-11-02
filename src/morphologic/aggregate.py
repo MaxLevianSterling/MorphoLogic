@@ -38,6 +38,192 @@ class Aggregator:
       4) Export CSV tables
     """
 
+    HUMAN_CELL_LINES = {"Sendai", "WTC", "123", "125"}
+
+    GREAT_APE_CELL_LINES = {
+        "Bonobo",
+        "Chimp",
+        "Chimpanzee",
+        "Joc",
+        "Sandra",
+    }
+
+    CELL_LINE_ALIASES = {
+        "Chimp": "Sandra",
+        "Chimpanzee": "Sandra",
+    }
+
+
+    @staticmethod
+    def _canonical_cell_line(value: Any) -> str | None:
+        """
+        Normalize cell-line labels.
+
+        Chimp and Chimpanzee are treated as Sandra.
+        """
+        if pd.isna(value):
+            return None
+
+        s = str(value).strip()
+        return Aggregator.CELL_LINE_ALIASES.get(s, s)
+
+
+    @staticmethod
+    def _species_from_cell_line(value: Any) -> str | None:
+        """
+        Map a cell-line label to Human or Great Ape.
+        """
+        if pd.isna(value):
+            return None
+
+        raw = str(value).strip()
+        canonical = Aggregator._canonical_cell_line(raw)
+
+        if raw in Aggregator.HUMAN_CELL_LINES or canonical in Aggregator.HUMAN_CELL_LINES:
+            return "Human"
+
+        if raw in Aggregator.GREAT_APE_CELL_LINES or canonical in Aggregator.GREAT_APE_CELL_LINES:
+            return "Great Ape"
+
+        return None
+
+
+    @staticmethod
+    def _infer_cell_line_col(
+        df: pd.DataFrame,
+        preferred_cols: list[str] | None = None,
+    ) -> str | None:
+        """
+        Infer which column contains cell-line labels by inspecting values.
+
+        This avoids assuming that the cell line is the last configured independent.
+        """
+        known = (
+            Aggregator.HUMAN_CELL_LINES
+            | Aggregator.GREAT_APE_CELL_LINES
+            | set(Aggregator.CELL_LINE_ALIASES)
+            | set(Aggregator.CELL_LINE_ALIASES.values())
+        )
+
+        candidates: list[str] = []
+
+        if preferred_cols:
+            candidates.extend([c for c in preferred_cols if c in df.columns])
+
+        candidates.extend(
+            c for c in df.columns
+            if c.startswith("path_structure_") and c not in candidates
+        )
+
+        best_col: str | None = None
+        best_hits = 0
+
+        for col in candidates:
+            vals = df[col].dropna().astype(str).str.strip()
+            if vals.empty:
+                continue
+
+            canonical_vals = vals.replace(Aggregator.CELL_LINE_ALIASES)
+            hits = vals.isin(known).sum() + canonical_vals.isin(known).sum()
+
+            if hits > best_hits:
+                best_hits = int(hits)
+                best_col = col
+
+        return best_col if best_hits > 0 else None
+
+
+    @staticmethod
+    def _infer_coverslip_col(
+        df: pd.DataFrame,
+        preferred_cols: list[str] | None = None,
+    ) -> str | None:
+        """
+        Infer which column contains coverslip labels by inspecting values.
+
+        Coverslip labels are expected to look like CS1, CS2, CS3, etc.
+        """
+        candidates: list[str] = []
+
+        if preferred_cols:
+            candidates.extend([c for c in preferred_cols if c in df.columns])
+
+        candidates.extend(
+            c for c in df.columns
+            if c.startswith("path_structure_") and c not in candidates
+        )
+
+        best_col: str | None = None
+        best_hits = 0
+
+        for col in candidates:
+            vals = df[col].dropna().astype(str).str.strip()
+            if vals.empty:
+                continue
+
+            hits = vals.str.match(r"(?i)^CS\d+$").sum()
+
+            if hits > best_hits:
+                best_hits = int(hits)
+                best_col = col
+
+        return best_col if best_hits > 0 else None
+
+
+    @staticmethod
+    def _pooled_base_cols(
+        independents: list[str],
+        *,
+        cell_line_col: str | None,
+        coverslip_col: str | None,
+    ) -> list[str]:
+        """
+        Return grouping columns for pooled/diff outputs.
+
+        The pooled/diff tables always remove:
+            - the inferred cell-line column, because it is replaced by species
+            - the inferred coverslip column, because coverslips should be pooled
+        """
+        exclude = {
+            cell_line_col,
+            coverslip_col,
+        }
+
+        return [
+            c for c in independents
+            if c not in exclude
+        ]
+
+
+    @staticmethod
+    def _annotate_species(
+        df: pd.DataFrame,
+        preferred_cols: list[str] | None = None,
+    ) -> tuple[pd.DataFrame, str | None]:
+        """
+        Add cell_line_raw, cell_line, and species columns.
+
+        The cell-line source column is inferred from dataframe values.
+        """
+        df = df.copy()
+
+        cell_line_col = Aggregator._infer_cell_line_col(
+            df,
+            preferred_cols=preferred_cols,
+        )
+
+        if cell_line_col is None:
+            df["cell_line_raw"] = pd.NA
+            df["cell_line"] = pd.NA
+            df["species"] = pd.NA
+            return df, None
+
+        df["cell_line_raw"] = df[cell_line_col].astype(str).str.strip()
+        df["cell_line"] = df["cell_line_raw"].map(Aggregator._canonical_cell_line)
+        df["species"] = df["cell_line_raw"].map(Aggregator._species_from_cell_line)
+
+        return df, cell_line_col
+
     def __init__(
         self,
         cfg: Config,
@@ -294,23 +480,28 @@ class Aggregator:
         df: pd.DataFrame,
         group_cols: list[str],
         dependents: list[str],
-        subject: str | None = None,
+        subject: str | None,
+        sum_dependents: list[str],
         use_length_weight: bool = False,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
         Compute per-element collapsed values and group summary stats.
 
         Use:
-            1) Collapse segment-level rows into per-element values (cell or neurite)
-            within each group.
-            2) Aggregate the per-element values into group-level mean/SEM/count tables.
+            1) Collapse row-level values into one value per biological element
+               using the aggregation rule declared by the calling job.
+            2) Aggregate those per-element values into group-level descriptive stats.
 
         Args:
-            df (pd.DataFrame): Source dataframe of segment-level measures.
+            df (pd.DataFrame): Source dataframe.
             group_cols (list[str]): Grouping columns for aggregation.
             dependents (list[str]): Measure columns to aggregate.
-            subject (str | None): Element unit: "cell" or "neurite".
-            use_length_weight (bool): If True, weight by 'segment_length_um'.
+            subject (str | None): Element unit: "cell", "neurite", or "branch".
+            sum_dependents (list[str]): Dependents that represent additive row-level
+                contributions and must be summed during the per-element collapse.
+                All other dependents are averaged or length-weighted.
+            use_length_weight (bool): If True, length-weight non-additive dependents
+                by 'segment_length_um'.
 
         Returns:
             tuple[pd.DataFrame, pd.DataFrame]:
@@ -329,28 +520,38 @@ class Aggregator:
         else:
             subj_cols = ["soma_id"]
 
-        # Build grouping columns for per-element collapse across bins and subjects
+        # Build grouping columns for the first-stage per-element collapse
         gcols = group_cols + subj_cols
 
-        # Select segment-level puncta counts that must sum across segments
-        sum_deps = [d for d in dependents if d == "segment_puncta_count"]
+        # The calling job explicitly declares which dependents are additive.
+        # Everything else is treated as a repeated/continuous value and averaged.
+        sum_deps = [d for d in dependents if d in sum_dependents]
+        mean_deps = [d for d in dependents if d not in sum_dependents]
 
-        # Select remaining dependents aggregated by mean or weighted mean
-        mean_deps = [d for d in dependents if d not in sum_deps]
-
-        # Collapse continuous dependents using length-weighted means when configured enabled
-        if use_length_weight:
-            elements = Aggregator._group_weighted_means(df, gcols, mean_deps, "segment_length_um")
-
-        # Collapse continuous dependents using simple means when weighting disabled
+        # Collapse non-additive dependents by weighted or simple mean
+        if mean_deps:
+            if use_length_weight:
+                elements = Aggregator._group_weighted_means(
+                    df,
+                    gcols,
+                    mean_deps,
+                    "segment_length_um",
+                )
+            else:
+                elements = (
+                    df.groupby(gcols, observed=False)[mean_deps]
+                    .mean()
+                    .reset_index()
+                )
         else:
+            # All dependents are additive; initialize one row per element group
             elements = (
-                df.groupby(gcols, observed=False)[mean_deps]
-                .mean()
-                .reset_index()
+                df[gcols]
+                .drop_duplicates()
+                .reset_index(drop=True)
             )
 
-        # Add segment puncta totals by summing within each per-element group
+        # Collapse additive dependents by sum
         if sum_deps:
             sums = (
                 df.groupby(gcols, observed=False)[sum_deps]
@@ -382,6 +583,73 @@ class Aggregator:
 
         # Return per-element table and the aggregated statistics
         return elements, stats
+
+
+    @staticmethod
+    def _compute_pooled_stats(
+        df: pd.DataFrame,
+        base_cols: list[str],
+        pooled_group_cols: list[str],
+        dependents: list[str],
+        subject: str | None,
+        sum_dependents: list[str],
+        use_length_weight: bool = False,
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """
+        Compute pooled species-level element values, species stats, and Human - Great Ape diff.
+
+        Pooled grouping is:
+            base_cols + ["species"] + pooled_group_cols
+
+        where base_cols are the normal independent variables except the inferred
+        cell-line column.
+        """
+        base_cols = list(base_cols or [])
+        pooled_group_cols = list(pooled_group_cols or [])
+
+        valid = df[df["species"].isin(["Human", "Great Ape"])].copy()
+
+        if valid.empty:
+            empty = pd.DataFrame()
+            return empty, empty, empty
+
+        pooled_group_cols_full = base_cols + ["species"] + pooled_group_cols
+
+        pooled_el, pooled_stats = Aggregator._compute_basic_stats(
+            valid,
+            group_cols=pooled_group_cols_full,
+            dependents=dependents,
+            subject=subject,
+            sum_dependents=sum_dependents,
+            use_length_weight=use_length_weight,
+        )
+
+        diff_idx = base_cols + pooled_group_cols
+
+        human = pooled_stats[pooled_stats["species"] == "Human"]
+        great_ape = pooled_stats[pooled_stats["species"] == "Great Ape"]
+
+        if human.empty or great_ape.empty:
+            diff = pd.DataFrame(columns=diff_idx + ["species"])
+            return pooled_el, pooled_stats, diff
+
+        human = human.set_index(diff_idx).drop(columns=["species"], errors="ignore")
+        great_ape = great_ape.set_index(diff_idx).drop(columns=["species"], errors="ignore")
+
+        human_numeric = human.select_dtypes(include=["number"])
+        great_ape_numeric = great_ape.select_dtypes(include=["number"])
+
+        numeric_cols = human_numeric.columns.intersection(great_ape_numeric.columns)
+
+        diff = human_numeric[numeric_cols].sub(
+            great_ape_numeric[numeric_cols],
+            fill_value=np.nan,
+        )
+
+        diff = diff.reset_index()
+        diff["species"] = "Human - Great Ape"
+
+        return pooled_el, pooled_stats, diff
 
 
     @staticmethod
@@ -477,22 +745,50 @@ class Aggregator:
                 - geom_df: Cleaned/enriched dataframe with bin columns added.
                 - geom_data: Mapping of job name -> {"el": elements_df, "stats": stats_df}.
         """
-        # Clean and annotate geometry: drop root, coerce path level, derive species
+        # Clean geometry by dropping the root segment
         geom_df = geom_df[geom_df['ID'] != 1].copy()
 
         agg = cfg.aggregation
 
-        # Read independent grouping keys and dependent metric lists from config
+        # Read independent grouping keys from config
         independents = [f'path_structure_{i}' for i in agg.independents]
+
+        # Infer cell-line/species annotations on a separate dataframe so normal
+        # el/stats outputs remain on the original aggregation path.
+        geom_df_pooled, cell_line_col = Aggregator._annotate_species(
+            geom_df,
+            preferred_cols=independents,
+        )
+
+        # Infer coverslip column and always remove it from pooled/diff grouping.
+        coverslip_col = Aggregator._infer_coverslip_col(
+            geom_df,
+            preferred_cols=independents,
+        )
+
+        pooled_base_cols = Aggregator._pooled_base_cols(
+            independents,
+            cell_line_col=cell_line_col,
+            coverslip_col=coverslip_col,
+        )
+
+        # Read dependent metric lists from config
         seg_deps     = agg.geometric['per_segment']['dependents'][:]
         branch_deps  = agg.geometric['per_branch']['dependents'][:]
         neurite_deps = agg.geometric['per_neurite']['dependents'][:]
         cell_deps    = agg.geometric['per_cell']['dependents'][:]
 
-        # Add percentile-normalized variants of signal-like metrics (in-place)
+        # Add percentile-normalized variants of signal-like metrics (in-place).
+        # Keep separate dependent lists for normal and pooled paths.
+        seg_deps_pooled = seg_deps[:]
+        cell_deps_pooled = cell_deps[:]
+
         if agg.norm_independent is not None:
             Aggregator._add_norm_columns(geom_df, seg_deps,  independents[agg.norm_independent])
             Aggregator._add_norm_columns(geom_df, cell_deps, independents[agg.norm_independent])
+
+            Aggregator._add_norm_columns(geom_df_pooled, seg_deps_pooled,  independents[agg.norm_independent])
+            Aggregator._add_norm_columns(geom_df_pooled, cell_deps_pooled, independents[agg.norm_independent])
 
         # Prepare numeric bin edges for distance, radius, and percentage bins
         dist_bins = np.arange(*agg.geometric['per_segment']['binning']['distance'])
@@ -508,6 +804,15 @@ class Aggregator:
         geom_df['e_dist_pct_neurite_bin']    = pd.IntervalIndex(pd.cut(geom_df['e_pct_neurite'],              bins=pct_bins))
         geom_df['e_dist_pct_max_neurite_bin']= pd.IntervalIndex(pd.cut(geom_df['e_pct_max_neurite'],          bins=pct_bins))
 
+        # Add the same engineered bins to the pooled dataframe for pooled/diff outputs.
+        geom_df_pooled['dist_bin']                 = pd.IntervalIndex(pd.cut(geom_df_pooled['dist_from_soma_um'],       bins=dist_bins))
+        geom_df_pooled['e_dist_bin']                = pd.IntervalIndex(pd.cut(geom_df_pooled['e_dist_from_soma'],       bins=dist_bins))
+        geom_df_pooled['rad_bin']                  = pd.IntervalIndex(pd.cut(geom_df_pooled['Radius'],                  bins=rad_bins))
+        geom_df_pooled['dist_pct_neurite_bin']     = pd.IntervalIndex(pd.cut(geom_df_pooled['dist_pct_neurite'],        bins=pct_bins))
+        geom_df_pooled['dist_pct_max_neurite_bin'] = pd.IntervalIndex(pd.cut(geom_df_pooled['dist_pct_max_neurite'],    bins=pct_bins))
+        geom_df_pooled['e_dist_pct_neurite_bin']   = pd.IntervalIndex(pd.cut(geom_df_pooled['e_pct_neurite'],           bins=pct_bins))
+        geom_df_pooled['e_dist_pct_max_neurite_bin']= pd.IntervalIndex(pd.cut(geom_df_pooled['e_pct_max_neurite'],      bins=pct_bins))
+
         # Map each engineered bin column to a concise suffix used in job names
         bin_cols = [
             ('dist_bin',                 'dist'),
@@ -520,13 +825,26 @@ class Aggregator:
             ('branch_order',             'order'),
         ]
 
-        # Define all geometric aggregation jobs (subject, bins, dependents, weighting)
+        # Explicit first-stage collapse rules for geometric metrics.
+        # Per-segment length and puncta are additive contributions, so they sum when
+        # segment rows are collapsed into a neurite/cell/bin. Branch-, neurite-, and
+        # cell-level totals are already repeated scalars and therefore do not sum again.
+        seg_sum_deps = [
+            dep for dep in ["segment_length_um", "segment_puncta_count"]
+            if dep in seg_deps
+        ]
+        seg_sum_deps_pooled = [
+            dep for dep in ["segment_length_um", "segment_puncta_count"]
+            if dep in seg_deps_pooled
+        ]
+
+        # Define all geometric aggregation jobs and their explicit collapse rules
         jobs = [
-            *[dict(name=f'geom_neurite_{suffix}', bins=[bcol], subject='neurite', deps=seg_deps, use_wt=True) for bcol, suffix in bin_cols],
-            *[dict(name=f'geom_cell_{suffix}',    bins=[bcol], subject='cell',    deps=seg_deps, use_wt=True) for bcol, suffix in bin_cols],
-            dict(name='geom_branch',  bins=[], subject='branch',  deps=branch_deps,  use_wt=False),
-            dict(name='geom_neurite', bins=[], subject='neurite', deps=neurite_deps, use_wt=False),
-            dict(name='geom_cell',    bins=[], subject='cell',    deps=cell_deps,    use_wt=False),
+            *[dict(name=f'geom_neurite_{suffix}', bins=[bcol], subject='neurite', deps=seg_deps, pooled_deps=seg_deps_pooled, sum_deps=seg_sum_deps, pooled_sum_deps=seg_sum_deps_pooled, use_wt=True) for bcol, suffix in bin_cols],
+            *[dict(name=f'geom_cell_{suffix}',    bins=[bcol], subject='cell',    deps=seg_deps, pooled_deps=seg_deps_pooled, sum_deps=seg_sum_deps, pooled_sum_deps=seg_sum_deps_pooled, use_wt=True) for bcol, suffix in bin_cols],
+            dict(name='geom_branch',  bins=[], subject='branch',  deps=branch_deps,  pooled_deps=branch_deps,       sum_deps=[], pooled_sum_deps=[], use_wt=False),
+            dict(name='geom_neurite', bins=[], subject='neurite', deps=neurite_deps, pooled_deps=neurite_deps,      sum_deps=[], pooled_sum_deps=[], use_wt=False),
+            dict(name='geom_cell',    bins=[], subject='cell',    deps=cell_deps,    pooled_deps=cell_deps_pooled,  sum_deps=[], pooled_sum_deps=[], use_wt=False),
         ]
 
         # Execute jobs with timing, collecting per-element stats
@@ -538,12 +856,31 @@ class Aggregator:
 
                 # Collapse to per-element values and compute group mean/SEM/count
                 el, stats = Aggregator._compute_basic_stats(
-                    geom_df, group_cols=gcols, dependents=job['deps'], subject=job['subject'], use_length_weight=job['use_wt']
+                    geom_df,
+                    group_cols=gcols,
+                    dependents=job['deps'],
+                    subject=job['subject'],
+                    sum_dependents=job['sum_deps'],
+                    use_length_weight=job['use_wt'],
+                )
+
+                # Collapse to pooled Human / Great Ape values and compute diff
+                el_p, stats_p, diff = Aggregator._compute_pooled_stats(
+                    geom_df_pooled,
+                    base_cols=pooled_base_cols,
+                    pooled_group_cols=job['bins'],
+                    dependents=job['pooled_deps'],
+                    subject=job['subject'],
+                    sum_dependents=job['pooled_sum_deps'],
+                    use_length_weight=job['use_wt'],
                 )
 
                 geom_data[job['name']] = {
                     'el':      el,
-                    'stats':   stats
+                    'stats':   stats,
+                    'el_p':    el_p,
+                    'stats_p': stats_p,
+                    'diff':    diff,
                 }
 
         return geom_df, geom_data
@@ -575,8 +912,29 @@ class Aggregator:
 
         agg = cfg.aggregation
 
-        # Read config: grouping keys and dependent metrics
+        # Read independent grouping keys from config
         independents = [f'path_structure_{i}' for i in agg.independents]
+
+        # Infer cell-line/species annotations on a separate dataframe so normal
+        # el/stats outputs remain on the original aggregation path.
+        df_pooled, cell_line_col = Aggregator._annotate_species(
+            df,
+            preferred_cols=independents,
+        )
+
+        # Infer coverslip column and always remove it from pooled/diff grouping.
+        coverslip_col = Aggregator._infer_coverslip_col(
+            df,
+            preferred_cols=independents,
+        )
+
+        pooled_base_cols = Aggregator._pooled_base_cols(
+            independents,
+            cell_line_col=cell_line_col,
+            coverslip_col=coverslip_col,
+        )
+
+        # Read dependent metrics from config
         radius_deps = agg.sholl['per_radius_dependents']
         cell_deps   = agg.sholl['per_subject_dependents']
 
@@ -584,12 +942,15 @@ class Aggregator:
         per_cell_deps    = [f'cell_{r}_{c}'    for r in radius_deps for c in cell_deps]
         per_neurite_deps = [f'neurite_{r}_{c}' for r in radius_deps for c in cell_deps]
 
-        # Define aggregation jobs (bins, subject, dependents)
+        # Define Sholl jobs and their explicit first-stage collapse rules.
+        # cell_r combines multiple neurites at the same radius, so all per-radius
+        # quantities sum. The other jobs operate on values already defined at the
+        # target biological level, so they are not summed during the first collapse.
         jobs = [
-            dict(name='cell_r',    bins=['sholl_radius'], subject='cell',    deps=radius_deps),
-            dict(name='cell',      bins=[],                 subject='cell',    deps=per_cell_deps),
-            dict(name='neurite_r', bins=['sholl_radius'], subject='neurite', deps=radius_deps),
-            dict(name='neurite',   bins=[],                 subject='neurite', deps=per_neurite_deps),
+            dict(name='cell_r',    bins=['sholl_radius'], subject='cell',    deps=radius_deps,       sum_deps=radius_deps),
+            dict(name='cell',      bins=[],               subject='cell',    deps=per_cell_deps,     sum_deps=[]),
+            dict(name='neurite_r', bins=['sholl_radius'], subject='neurite', deps=radius_deps,       sum_deps=[]),
+            dict(name='neurite',   bins=[],               subject='neurite', deps=per_neurite_deps, sum_deps=[]),
         ]
 
         # Run jobs with timing; compute element stats
@@ -597,12 +958,31 @@ class Aggregator:
         for job in jobs:
             with Aggregator.timed(f"aggregate_sholl_data:{job['name']}"):
                 group_cols = independents + job['bins']
+
                 el, stats = Aggregator._compute_basic_stats(
-                    df, group_cols=group_cols, dependents=job['deps'], subject=job['subject']
+                    df,
+                    group_cols=group_cols,
+                    dependents=job['deps'],
+                    subject=job['subject'],
+                    sum_dependents=job['sum_deps'],
                 )
+
+                el_p, stats_p, diff = Aggregator._compute_pooled_stats(
+                    df_pooled,
+                    base_cols=pooled_base_cols,
+                    pooled_group_cols=job['bins'],
+                    dependents=job['deps'],
+                    subject=job['subject'],
+                    sum_dependents=job['sum_deps'],
+                    use_length_weight=False,
+                )
+
                 sholl_data[job['name']] = {
                     'el':      el,
-                    'stats':   stats
+                    'stats':   stats,
+                    'el_p':    el_p,
+                    'stats_p': stats_p,
+                    'diff':    diff,
                 }
 
         return df, sholl_data

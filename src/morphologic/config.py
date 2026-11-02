@@ -13,10 +13,10 @@ from .exceptions import ConfigError, DataNotFound
 
 @dataclass(frozen=True)
 class Pathing:
-    directory: Path = Path("Path/to/example_dataset")                            # Parent directory containing all data
-    image_suffix: str = "_8bit"                                                  # Image file suffix
+    directory: Path = Path("/scratch2/msterling/Morphology")                   # Parent directory containing all data
+    image_suffix: str = "_8bit_bgsub"                                                  # Image file suffix
     soma_roi_suffix: str = "_somas"                                              # File suffix for soma ROIs
-    puncta_roi_suffix: str = "_corrected_colocResults_0"                         # Optional: File suffix for puncta ROIs
+    puncta_roi_suffix: str = "_stitched_colocResults_0"                         # Optional: File suffix for puncta ROIs
     signal_channels: Tuple[int, ...] = (2, 4)                                    # Optional: 1-based channel indices of signal channels in image
     nuclear_roi_suffix: str = "_nuclei"                                          # Optional: File suffix for nuclear ROIs 
 
@@ -24,33 +24,33 @@ class Pathing:
 @dataclass(frozen=True)
 class Processing:
     overwrite: bool = False                                                      # Recompute even if cell outputs already exist
-    aggregate: bool = True                                                       # Run post-processing aggregation of data
-    visualize: bool = True                                                       # Toggle per-cell figure generation
-    extract_puncta: bool = True                                                  # Toggle morphology-aware puncta mapping
-    extract_signal: bool = True                                                  # Toggle morphology-aware signal mapping
-    deduct_nuclei: bool = True                                                   # Subtract nuclear signal from somatic signal
+    aggregate: bool = False                                                       # Run post-processing aggregation of data
+    visualize: bool = True                                                      # Toggle per-cell figure generation
+    extract_puncta: bool = False                                                 # Toggle morphology-aware puncta mapping
+    extract_signal: bool = False                                                  # Toggle morphology-aware signal mapping
+    deduct_nuclei: bool = False                                                   # Subtract nuclear signal from somatic signal
 
 
 @dataclass(frozen=True)
 class Parameters:
     # General
     recursion_limit: int = 5000                                                  # Python recursion limit
-    voxel_size: float = 0.227                                                    # µm per pixel (µm)
-    sholl_range: Tuple[float, float, float] = (0.0, 801.0, 10.0)                 # Sholl radii definition: [start, stop, step] (µm)
+    voxel_size: float = 0.227                                                 # µm per pixel (µm)
+    sholl_range: Tuple[float, float, float] = (0.0, 801.0, 25.0)                 # Sholl radii definition: [start, stop, step] (µm)
     puncta_max_distance_um: float = 3.0                                          # Ignore puncta farther than this from any soma/segment (µm)
 
     # Neurite radius smoothing
     smooth_radii: bool = True                                                    # Smooth radii along neurites with linear regression
-    radii_smoothing_window_length: int = 60                                      # Window size for smoothing (nodes)
-    radii_smoothing_interval: int = 5                                            # Stride between smoothing fits (nodes)
+    radii_smoothing_window_length: int = 30                                      # Window size for smoothing (nodes)
+    radii_smoothing_interval: int = 10                                           # Stride between smoothing fits (nodes)
     radii_smoothing_min: float = 0.05                                            # Minimum node radius after smoothing (µm)
 
     # Quality control
     enforce_primaries_until: int = 1                                             # Force first # nodes from soma to be primary (nodes)
     min_bp_distance: int = 2                                                     # Enforce minimum node spacing between branch points (nodes)
     min_branch_length: int = 3                                                   # Drop small branches (nodes)
-    min_segment_length: float = 0.6                                              # Enforce minimum segment length (µm)
-    max_root_offset_um: float = 50                                               # Raise overly long first segments from soma (µm)
+    min_segment_length: float = 0.5                                              # Enforce minimum segment length (µm)
+    max_root_offset_um: float = 100                                               # Raise overly long first segments from soma (µm)
 
 
 @dataclass(frozen=True)
@@ -128,7 +128,7 @@ class Signal:
     enable: bool = True                                                          # Enable rendering signal figures
     show_axes_and_title: bool = True                                             # Draw axes and a title
     show_scale_bar: bool = True                                                  # Draw a scale bar on the figure
-    channel_names: Tuple[str, ...] = ("Channel_Name_A", "Channel_Name_B")        # Signal channel names (match General - Signal Channels)
+    channel_names: Tuple[str, ...] = ("HCN1", "HCN2")                          # Signal channel names (match General - Signal Channels)
     display: Display = Display()                                                 # General display settings
     scale_bar: ScaleBar = ScaleBar()                                             # Scale bar styling/placement
     legend: Legend = Legend()                                                    # Legend placement and geometry
@@ -138,7 +138,7 @@ class Signal:
 class Mapping:
     enable: bool = True                                                          # Enable rendering morphology-aware mapping scatterplot(s)
     show_axes_and_title: bool = True                                             # Draw axes and a title
-    bin_size_um: float = 10.0                                                    # Distance bin width (µm)
+    bin_size_um: float = 25.0                                                    # Distance bin width (µm)
     display: Display = Display()                                                 # General display settings
 
 
@@ -155,8 +155,8 @@ class Visualization:
 @dataclass(frozen=True)
 class Aggregate:
     # General
-    independents: List[int] = field(default_factory=lambda: [1,2])               # Subfolder levels treated as independent variables (under pathing.directory)
-    norm_independent: Optional[int] = None                                       # (Optional: None) Index of independents to create normalized signal data for (e.g. batch)
+    independents: List[int] = field(default_factory=lambda: [1,2,3,4])           # Subfolder levels treated as independent variables (under pathing.directory)
+    norm_independent: Optional[int] = 1                                          # (Optional: None) Index of independents to create normalized signal data for (e.g. batch)
 
     # Sholl analysis
     sholl: Dict[str, Any] = field(default_factory=lambda: {                      # Sholl dependents
@@ -179,12 +179,13 @@ class Aggregate:
     geometric: Dict[str, Any] = field(default_factory=lambda: {                  # Geometric dependents; augmented in _add_dependents
         "per_segment": {                                                         # Per-segment (node-to-node) aggregation settings
             "binning": {                                                         # Histogram bin definitions for stratified analyses
-                "distance": [0, 800, 10],                                        # [start, stop, step] for (electrotonic) distance from soma (unitless/µm)
-                "radius": [0, 2, 0.05],                                          # [start, stop, step] for dendritic radius (µm)
-                "percent": [0, 1, 0.01],                                         # [start, stop, step] for fractional/percent metrics (0–1)
+                "distance": [0, 800, 25],                                        # [start, stop, step] for (electrotonic) distance from soma (unitless/µm)
+                "radius": [0, 2, 0.1],                                          # [start, stop, step] for dendritic radius (µm)
+                "percent": [0, 1, 0.1],                                         # [start, stop, step] for fractional/percent metrics (0–1)
             },
             "dependents": [                                                      # Metrics aggregated per segment ()
                 "Radius",                                                        # Segment radius (µm)
+                "segment_length_um"
             ],
         },
         "per_branch": {                                                          # Per-branch aggregation settings

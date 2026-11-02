@@ -959,7 +959,7 @@ class Visualization:
 
     def save_reconstruction(self, cell_data: Dict[str, Any], out_base: Path) -> None:
         """
-        Save a reconstruction overlay figure (soma + neurites).
+        Save reconstruction figure.
 
         Args:
             cell_data (dict): Per-cell data dict from the pipeline.
