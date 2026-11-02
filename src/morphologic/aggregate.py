@@ -294,7 +294,8 @@ class Aggregator:
         df: pd.DataFrame,
         group_cols: list[str],
         dependents: list[str],
-        subject: str | None = None,
+        subject: str | None,
+        sum_dependents: list[str],
         use_length_weight: bool = False,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
@@ -311,6 +312,8 @@ class Aggregator:
             dependents (list[str]): Measure columns to aggregate.
             subject (str | None): Element unit: "cell" or "neurite".
             use_length_weight (bool): If True, weight by 'segment_length_um'.
+            sum_dependents (list[str]): Metrics summed within each element.
+                Other metrics use simple or length-weighted means.
 
         Returns:
             tuple[pd.DataFrame, pd.DataFrame]:
@@ -332,25 +335,26 @@ class Aggregator:
         # Build grouping columns for per-element collapse across bins and subjects
         gcols = group_cols + subj_cols
 
-        # Select segment-level puncta counts that must sum across segments
-        sum_deps = [d for d in dependents if d == "segment_puncta_count"]
+        # Each job declares which row-level contributions are additive.
+        sum_deps = [d for d in dependents if d in sum_dependents]
+        mean_deps = [d for d in dependents if d not in sum_dependents]
 
-        # Select remaining dependents aggregated by mean or weighted mean
-        mean_deps = [d for d in dependents if d not in sum_deps]
-
-        # Collapse continuous dependents using length-weighted means when configured enabled
-        if use_length_weight:
-            elements = Aggregator._group_weighted_means(df, gcols, mean_deps, "segment_length_um")
-
-        # Collapse continuous dependents using simple means when weighting disabled
+        # Average continuous/repeated values within each element.
+        if mean_deps:
+            if use_length_weight:
+                elements = Aggregator._group_weighted_means(
+                    df, gcols, mean_deps, "segment_length_um"
+                )
+            else:
+                elements = (
+                    df.groupby(gcols, observed=False)[mean_deps]
+                    .mean()
+                    .reset_index()
+                )
         else:
-            elements = (
-                df.groupby(gcols, observed=False)[mean_deps]
-                .mean()
-                .reset_index()
-            )
+            elements = df[gcols].drop_duplicates().reset_index(drop=True)
 
-        # Add segment puncta totals by summing within each per-element group
+        # Sum additive contributions within each element.
         if sum_deps:
             sums = (
                 df.groupby(gcols, observed=False)[sum_deps]
@@ -520,13 +524,19 @@ class Aggregator:
             ('branch_order',             'order'),
         ]
 
-        # Define all geometric aggregation jobs (subject, bins, dependents, weighting)
+        # Segment lengths and puncta counts sum within each element/bin.
+        seg_sum_deps = [
+            dep for dep in ["segment_length_um", "segment_puncta_count"]
+            if dep in seg_deps
+        ]
+
+        # Existing branch/neurite/cell totals are repeated values.
         jobs = [
-            *[dict(name=f'geom_neurite_{suffix}', bins=[bcol], subject='neurite', deps=seg_deps, use_wt=True) for bcol, suffix in bin_cols],
-            *[dict(name=f'geom_cell_{suffix}',    bins=[bcol], subject='cell',    deps=seg_deps, use_wt=True) for bcol, suffix in bin_cols],
-            dict(name='geom_branch',  bins=[], subject='branch',  deps=branch_deps,  use_wt=False),
-            dict(name='geom_neurite', bins=[], subject='neurite', deps=neurite_deps, use_wt=False),
-            dict(name='geom_cell',    bins=[], subject='cell',    deps=cell_deps,    use_wt=False),
+            *[dict(name=f'geom_neurite_{suffix}', bins=[bcol], subject='neurite', deps=seg_deps, sum_deps=seg_sum_deps, use_wt=True) for bcol, suffix in bin_cols],
+            *[dict(name=f'geom_cell_{suffix}', bins=[bcol], subject='cell', deps=seg_deps, sum_deps=seg_sum_deps, use_wt=True) for bcol, suffix in bin_cols],
+            dict(name='geom_branch', bins=[], subject='branch', deps=branch_deps, sum_deps=[], use_wt=False),
+            dict(name='geom_neurite', bins=[], subject='neurite', deps=neurite_deps, sum_deps=[], use_wt=False),
+            dict(name='geom_cell', bins=[], subject='cell', deps=cell_deps, sum_deps=[], use_wt=False),
         ]
 
         # Execute jobs with timing, collecting per-element stats
@@ -538,7 +548,12 @@ class Aggregator:
 
                 # Collapse to per-element values and compute group mean/SEM/count
                 el, stats = Aggregator._compute_basic_stats(
-                    geom_df, group_cols=gcols, dependents=job['deps'], subject=job['subject'], use_length_weight=job['use_wt']
+                    geom_df,
+                    group_cols=gcols,
+                    dependents=job['deps'],
+                    subject=job['subject'],
+                    sum_dependents=job['sum_deps'],
+                    use_length_weight=job['use_wt'],
                 )
 
                 geom_data[job['name']] = {
@@ -586,10 +601,10 @@ class Aggregator:
 
         # Define aggregation jobs (bins, subject, dependents)
         jobs = [
-            dict(name='cell_r',    bins=['sholl_radius'], subject='cell',    deps=radius_deps),
-            dict(name='cell',      bins=[],                 subject='cell',    deps=per_cell_deps),
-            dict(name='neurite_r', bins=['sholl_radius'], subject='neurite', deps=radius_deps),
-            dict(name='neurite',   bins=[],                 subject='neurite', deps=per_neurite_deps),
+            dict(name='cell_r',     bins=['sholl_radius'],  subject='cell',     deps=radius_deps,       sum_deps=radius_deps),
+            dict(name='cell',       bins=[],                subject='cell',     deps=per_cell_deps,     sum_deps=[]),
+            dict(name='neurite_r',  bins=['sholl_radius'],  subject='neurite',  deps=radius_deps,       sum_deps=[]),
+            dict(name='neurite',    bins=[],                subject='neurite',  deps=per_neurite_deps,  sum_deps=[]),
         ]
 
         # Run jobs with timing; compute element stats
@@ -598,7 +613,11 @@ class Aggregator:
             with Aggregator.timed(f"aggregate_sholl_data:{job['name']}"):
                 group_cols = independents + job['bins']
                 el, stats = Aggregator._compute_basic_stats(
-                    df, group_cols=group_cols, dependents=job['deps'], subject=job['subject']
+                    df,
+                    group_cols=group_cols,
+                    dependents=job['deps'],
+                    subject=job['subject'],
+                    sum_dependents=job['sum_deps'],
                 )
                 sholl_data[job['name']] = {
                     'el':      el,
